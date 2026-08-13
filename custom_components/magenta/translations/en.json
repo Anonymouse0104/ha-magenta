@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Magenta Start",
+        "description": "Enter your Magenta Start credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Magenta Start.",
+      "invalid_auth": "Invalid username or password.",
+      "mfa_required": "This account requires MFA. MFA setup is not supported yet."
+    },
+    "abort": {
+      "already_configured": "This Magenta account is already configured."
+    }
+  }
+}

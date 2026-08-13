@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Magenta Start",
+        "description": "Vul je Magenta Start gebruikersnaam en wachtwoord in.",
+        "data": {
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met Magenta Start.",
+      "invalid_auth": "Gebruikersnaam of wachtwoord is ongeldig.",
+      "mfa_required": "Dit account vereist MFA. MFA wordt in deze eerste versie nog niet ondersteund."
+    },
+    "abort": {
+      "already_configured": "Dit Magenta-account is al toegevoegd."
+    }
+  }
+}
