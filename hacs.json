@@ -1,3 +1,7 @@
 {
-  "name": "Magenta Start"
+  "name": "Magenta Start",
+  "content_in_root": false,
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "magenta.zip"
 }

@@ -86,12 +86,11 @@ MFA is intentionally not included in v0.1.0 because the exact MFA submission flo
 
 ## v0.2.0
 
-This release adds the three main Magenta incident timestamps as Home Assistant timestamp sensors:
+This release exposes Magenta incident identity and the main incident timing
+fields to Home Assistant. The integration remains notification-agnostic:
+WhatsApp, Telegram, mobile notifications, or other services should be
+implemented with Home Assistant automations.
 
-- Aanname (`begin_op`)
-- Overdracht uitgifte (`begin_brw`)
-- Afsluiten incident (`einde_op`)
-
-Incident number (`nummer`) and the stable Magenta `gebeurtenis_id` are exposed as attributes. This allows Home Assistant automations to verify that kladblokregels belong to the same incident before acting on them.
-
-The integration deliberately contains no WhatsApp, Telegram, or other notification-specific logic. Notification delivery belongs in Home Assistant automations so every user can choose their own notification service.
+The Magenta `gebeurtenis_id` and incident number are exposed so automations
+can ensure that kladblok messages belong to the same incident before acting
+on them.

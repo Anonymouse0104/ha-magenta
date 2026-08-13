@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Magenta Start",
-        "description": "Log in op Magenta Start / Inzetregistratie.",
+        "description": "Log in to Magenta Start / Inzetregistratie.",
         "data": {
           "username": "Gebruikersnaam",
           "password": "Wachtwoord",

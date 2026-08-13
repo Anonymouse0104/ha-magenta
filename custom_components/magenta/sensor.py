@@ -3,230 +3,130 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ID, UnitOfTime
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import CONF_MONITOR_MINUTES, DEFAULT_MONITOR_MINUTES, DOMAIN
 from .coordinator import MagentaCoordinator
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities,
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: MagentaCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
-            MagentaIncidentSensor(coordinator, entry),
-            MagentaNotebookSensor(coordinator, entry),
-            MagentaLatestNotebookSensor(coordinator, entry),
-            MagentaUnitsSensor(coordinator, entry),
-            MagentaAannameSensor(coordinator, entry),
-            MagentaOverdrachtSensor(coordinator, entry),
-            MagentaAfsluitenSensor(coordinator, entry),
-            MagentaApiSensor(coordinator, entry),
+            MagentaSensor(coordinator, entry, "Aanname", "begin_op"),
+            MagentaSensor(coordinator, entry, "Overdracht uitgifte", "begin_brw"),
+            MagentaSensor(coordinator, entry, "Afsluiten incident", "einde_op"),
+            MagentaSensor(coordinator, entry, "Ingezette eenheden", "units"),
+            MagentaSensor(coordinator, entry, "Kladblokregels", "kladblok_count"),
+            MagentaSensor(coordinator, entry, "Laatste incident", "incident_number"),
+            MagentaSensor(coordinator, entry, "Laatste kladblokregel", "last_kladblok"),
+            MagentaSensor(coordinator, entry, "Kladblokmonitor actief", "monitoring"),
+            MagentaSensor(
+                coordinator,
+                entry,
+                "Kladblokmonitor tot",
+                "monitor_until",
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
         ]
     )
 
 
-class BaseMagentaSensor(CoordinatorEntity[MagentaCoordinator], SensorEntity):
-    """Base Magenta sensor."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: MagentaCoordinator, entry: ConfigEntry) -> None:
+class MagentaSensor(CoordinatorEntity[MagentaCoordinator], SensorEntity):
+    def __init__(
+        self,
+        coordinator: MagentaCoordinator,
+        entry: ConfigEntry,
+        name: str,
+        key: str,
+        entity_category: EntityCategory | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Magenta Start",
-            manufacturer="MagentaM&T",
-            model="Magenta Start API",
-        )
-
-    @property
-    def incident(self) -> dict[str, Any] | None:
-        return (self.coordinator.data or {}).get("incident")
-
-    @staticmethod
-    def _timestamp(value: str | None) -> datetime | None:
-        if not value:
-            return None
-        return dt_util.parse_datetime(value)
-
-
-class MagentaIncidentSensor(BaseMagentaSensor):
-    _attr_name = "Laatste incident"
-    _attr_icon = "mdi:fire-truck"
-
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_latest_incident"
-
-    @property
-    def native_value(self):
-        incident = self.incident
-        return incident.get("nummer") if incident else None
-
-    @property
-    def extra_state_attributes(self):
-        incident = self.incident
-        if not incident:
-            return {}
-        return {
-            "incident_id": incident.get("id"),
-            "gebeurtenis_id": incident.get("gebeurtenis_id"),
-            "incident_nummer": incident.get("nummer"),
-            "prioriteit": incident.get("prioriteit"),
-            "classificatie": incident.get("classificatie"),
-            "straat": incident.get("straat"),
-            "huisnummer": incident.get("huisnummer"),
-            "postcode": incident.get("postcode"),
-            "plaats": incident.get("plaats"),
-            "begin_op": incident.get("begin_op"),
-            "modified_on": incident.get("modified_on"),
-        }
-
-
-class MagentaNotebookSensor(BaseMagentaSensor):
-    _attr_name = "Kladblokregels"
-    _attr_icon = "mdi:notebook-outline"
-
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_notebook"
-
-    @property
-    def native_value(self):
-        incident = self.incident
-        return len(incident.get("notebook", [])) if incident else 0
-
-    @property
-    def extra_state_attributes(self):
-        incident = self.incident
-        if not incident:
-            return {"regels": []}
-        return {"regels": incident.get("notebook", [])}
-
-
-class MagentaLatestNotebookSensor(BaseMagentaSensor):
-    _attr_name = "Laatste kladblokregel"
-    _attr_icon = "mdi:message-text-outline"
-
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_latest_notebook"
-
-    @property
-    def native_value(self):
-        incident = self.incident
-        if not incident or not incident.get("notebook"):
-            return None
-        return incident["notebook"][-1].get("bericht")
-
-    @property
-    def extra_state_attributes(self):
-        incident = self.incident
-        if not incident or not incident.get("notebook"):
-            return {}
-        line = incident["notebook"][-1]
-        return {
-            "datum": line.get("datum"),
-            "regel_id": line.get("id"),
-            "incident_id": incident.get("id"),
-            "gebeurtenis_id": incident.get("gebeurtenis_id"),
-            "incident_nummer": incident.get("nummer"),
-        }
-
-
-class MagentaUnitsSensor(BaseMagentaSensor):
-    _attr_name = "Ingezette eenheden"
-    _attr_icon = "mdi:fire-truck"
-
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_units"
-
-    @property
-    def native_value(self):
-        incident = self.incident
-        return len(incident.get("units", [])) if incident else 0
-
-    @property
-    def extra_state_attributes(self):
-        incident = self.incident
-        if not incident:
-            return {"eenheden": []}
-        return {"eenheden": incident.get("units", [])}
-
-
-class MagentaIncidentTimeSensor(BaseMagentaSensor):
-    """Expose one Magenta incident/planning timestamp."""
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(self, coordinator, entry, key: str, name: str, unique_key: str) -> None:
-        super().__init__(coordinator, entry)
         self._key = key
         self._attr_name = name
-        self._attr_unique_id = f"{entry.entry_id}_{unique_key}"
-        self._attr_icon = "mdi:clock-outline"
-
-    @property
-    def native_value(self) -> datetime | None:
-        incident = self.incident
-        if not incident:
-            return None
-        return self._timestamp(incident.get(self._key))
-
-    @property
-    def extra_state_attributes(self):
-        incident = self.incident
-        if not incident:
-            return {}
-        return {
-            "incident_nummer": incident.get("nummer"),
-            "gebeurtenis_id": incident.get("gebeurtenis_id"),
-        }
-
-
-class MagentaAannameSensor(MagentaIncidentTimeSensor):
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(
-            coordinator, entry, "begin_op", "Aanname", "aanname"
-        )
-
-
-class MagentaOverdrachtSensor(MagentaIncidentTimeSensor):
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(
-            coordinator, entry, "begin_brw", "Overdracht uitgifte", "overdracht"
-        )
-
-
-class MagentaAfsluitenSensor(MagentaIncidentTimeSensor):
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(
-            coordinator, entry, "einde_op", "Afsluiten incident", "afsluiten"
-        )
-
-
-class MagentaApiSensor(BaseMagentaSensor):
-    _attr_name = "API"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:cloud-check-outline"
-
-    def __init__(self, coordinator, entry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_api"
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_entity_category = entity_category
+        self._attr_icon = {
+            "Aanname": "mdi:clock-outline",
+            "Overdracht uitgifte": "mdi:clock-outline",
+            "Afsluiten incident": "mdi:clock-outline",
+            "Ingezette eenheden": "mdi:fire-truck",
+            "Kladblokregels": "mdi:notebook-outline",
+            "Laatste incident": "mdi:fire-truck",
+            "Laatste kladblokregel": "mdi:message-text-outline",
+            "Kladblokmonitor actief": "mdi:timer-outline",
+            "Kladblokmonitor tot": "mdi:timer-outline",
+        }.get(name)
 
     @property
     def native_value(self):
-        return "online" if self.coordinator.last_update_success else "offline"
+        data = self.coordinator.data or {}
+        latest = data.get("latest") or {}
+        detail = data.get("detail") or {}
+
+        if self._key == "begin_op":
+            return _format_dt(latest.get("begin_op"))
+        if self._key == "begin_brw":
+            return _format_dt(detail.get("begin_brw"))
+        if self._key == "einde_op":
+            return _format_dt(detail.get("einde_op"))
+        if self._key == "units":
+            return len(detail.get("ingezette_eenheden") or [])
+        if self._key == "kladblok_count":
+            return len(detail.get("kladblok") or [])
+        if self._key == "incident_number":
+            return latest.get("nummer")
+        if self._key == "last_kladblok":
+            lines = detail.get("kladblok") or []
+            if not lines:
+                return None
+            line = lines[-1]
+            return _line_text(line)
+        if self._key == "monitoring":
+            return "aan" if data.get("monitoring") else "uit"
+        if self._key == "monitor_until":
+            return _format_dt(data.get("monitor_until"))
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data or {}
+        latest = data.get("latest") or {}
+        detail = data.get("detail") or {}
+        attrs: dict[str, Any] = {
+            "incident_id": latest.get("gebeurtenis_id"),
+            "incident_nummer": latest.get("nummer"),
+            "monitor_minutes": self.coordinator.monitor_minutes,
+        }
+
+        if self._key == "last_kladblok":
+            lines = detail.get("kladblok") or []
+            if lines:
+                attrs["kladblok"] = lines[-1]
+        return attrs
+
+
+def _format_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().isoformat()
+    except (ValueError, TypeError):
+        return value
+
+
+def _line_text(line: dict[str, Any]) -> str:
+    for key in ("regel", "tekst", "omschrijving", "commentaar", "message", "text"):
+        if line.get(key):
+            return str(line[key])
+    return str(line)
