@@ -49,3 +49,8 @@ This is an unofficial integration and is not affiliated with or endorsed by Mage
 Never put Magenta credentials, session tickets or API tokens in GitHub, YAML, issues or screenshots.
 
 MFA is intentionally not implemented until the exact Magenta submission flow is known; the integration does not guess at that protocol.
+
+
+## Current version
+
+`0.2.0`

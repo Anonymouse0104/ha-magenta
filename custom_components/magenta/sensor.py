@@ -28,6 +28,9 @@ async def async_setup_entry(
             MagentaNotebookSensor(coordinator, entry),
             MagentaLatestNotebookSensor(coordinator, entry),
             MagentaUnitsSensor(coordinator, entry),
+            MagentaAannameSensor(coordinator, entry),
+            MagentaOverdrachtSensor(coordinator, entry),
+            MagentaAfsluitenSensor(coordinator, entry),
             MagentaApiSensor(coordinator, entry),
         ]
     )
@@ -79,6 +82,8 @@ class MagentaIncidentSensor(BaseMagentaSensor):
             return {}
         return {
             "incident_id": incident.get("id"),
+            "gebeurtenis_id": incident.get("gebeurtenis_id"),
+            "incident_nummer": incident.get("nummer"),
             "prioriteit": incident.get("prioriteit"),
             "classificatie": incident.get("classificatie"),
             "straat": incident.get("straat"),
@@ -136,6 +141,7 @@ class MagentaLatestNotebookSensor(BaseMagentaSensor):
             "datum": line.get("datum"),
             "regel_id": line.get("id"),
             "incident_id": incident.get("id"),
+            "gebeurtenis_id": incident.get("gebeurtenis_id"),
             "incident_nummer": incident.get("nummer"),
         }
 
@@ -159,6 +165,57 @@ class MagentaUnitsSensor(BaseMagentaSensor):
         if not incident:
             return {"eenheden": []}
         return {"eenheden": incident.get("units", [])}
+
+
+class MagentaIncidentTimeSensor(BaseMagentaSensor):
+    """Expose one Magenta incident/planning timestamp."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator, entry, key: str, name: str, unique_key: str) -> None:
+        super().__init__(coordinator, entry)
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{entry.entry_id}_{unique_key}"
+        self._attr_icon = "mdi:clock-outline"
+
+    @property
+    def native_value(self) -> datetime | None:
+        incident = self.incident
+        if not incident:
+            return None
+        return self._timestamp(incident.get(self._key))
+
+    @property
+    def extra_state_attributes(self):
+        incident = self.incident
+        if not incident:
+            return {}
+        return {
+            "incident_nummer": incident.get("nummer"),
+            "gebeurtenis_id": incident.get("gebeurtenis_id"),
+        }
+
+
+class MagentaAannameSensor(MagentaIncidentTimeSensor):
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(
+            coordinator, entry, "begin_op", "Aanname", "aanname"
+        )
+
+
+class MagentaOverdrachtSensor(MagentaIncidentTimeSensor):
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(
+            coordinator, entry, "begin_brw", "Overdracht uitgifte", "overdracht"
+        )
+
+
+class MagentaAfsluitenSensor(MagentaIncidentTimeSensor):
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(
+            coordinator, entry, "einde_op", "Afsluiten incident", "afsluiten"
+        )
 
 
 class MagentaApiSensor(BaseMagentaSensor):

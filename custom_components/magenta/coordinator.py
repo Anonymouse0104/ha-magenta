@@ -77,9 +77,16 @@ class MagentaCoordinator(DataUpdateCoordinator[dict]):
             return {
                 "available": True,
                 "incident": {
+                    # Magenta has two identifiers for an incident:
+                    # "nummer" is the human-visible incident number and
+                    # "gebeurtenis_id" is the stable API identifier.
                     "id": result.get("gebeurtenis_id"),
+                    "gebeurtenis_id": result.get("gebeurtenis_id"),
                     "nummer": result.get("nummer"),
+                    # Main incident/planning times from Magenta.
                     "begin_op": result.get("begin_op"),
+                    "begin_brw": result.get("begin_brw"),
+                    "einde_op": result.get("einde_op"),
                     "modified_on": result.get("modified_on"),
                     "prioriteit": result.get("prioriteit"),
                     "classificatie": result.get("meldings_classificatie_1"),

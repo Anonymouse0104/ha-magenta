@@ -82,3 +82,16 @@ This is an unofficial integration. It is not affiliated with or endorsed by Mage
 The integration stores the username/password in the Home Assistant config entry. Never put credentials in YAML, GitHub issues or source code.
 
 MFA is intentionally not included in v0.1.0 because the exact MFA submission flow was not established during API reverse engineering. A future release should add it rather than guessing at the protocol.
+
+
+## v0.2.0
+
+This release adds the three main Magenta incident timestamps as Home Assistant timestamp sensors:
+
+- Aanname (`begin_op`)
+- Overdracht uitgifte (`begin_brw`)
+- Afsluiten incident (`einde_op`)
+
+Incident number (`nummer`) and the stable Magenta `gebeurtenis_id` are exposed as attributes. This allows Home Assistant automations to verify that kladblokregels belong to the same incident before acting on them.
+
+The integration deliberately contains no WhatsApp, Telegram, or other notification-specific logic. Notification delivery belongs in Home Assistant automations so every user can choose their own notification service.
