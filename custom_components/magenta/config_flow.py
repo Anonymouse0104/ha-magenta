@@ -34,6 +34,8 @@ class MagentaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 errors["base"] = "unknown"
             else:
+                await coordinator.async_close()
+
                 await self.async_set_unique_id(
                     user_input[CONF_USERNAME].strip().lower()
                 )

@@ -57,19 +57,26 @@ class MagentaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._ensure_session()
         payload = {
             "login": self.username,
+            "password": self.password,
             "login_as": "",
-            "remember": True,
-            "remember_token": "",
+            "remember": False,
         }
         try:
             async with self._session.post(
                 f"{API_BASE}/authenticate/login",
                 json=payload,
-                headers={"Accept": "application/vnd.magentammt.com+json; version=1.0;"},
+                headers={
+                    "Accept": "application/vnd.magentammt.com+json; version=1.0;",
+                    "Content-Type": "application/json",
+                },
+                timeout=20,
             ) as response:
-                if response.status >= 400:
-                    raise MagentaApiError(f"Login failed: {response.status}")
                 data = await response.json(content_type=None)
+                if response.status in (401, 403):
+                    raise MagentaApiError("Ongeldige gebruikersnaam of wachtwoord")
+                if response.status >= 400:
+                    message = data.get("message") if isinstance(data, dict) else None
+                    raise MagentaApiError(str(message or f"Login failed: HTTP {response.status}"))
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise MagentaApiError(str(err)) from err
 
