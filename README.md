@@ -81,3 +81,5 @@ MFA is intentionally not implemented until the exact Magenta submission flow is 
 ## Current version
 
 `0.2.4`
+
+This project is currently distributed through HACS.
