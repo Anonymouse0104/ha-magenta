@@ -97,7 +97,8 @@ class MagentaCoordinator(DataUpdateCoordinator[dict]):
                     "regel_id": item.get("id"),
                     "datum": item.get("datum"),
                     "bericht": item.get("bericht"),
-                    "regel": item,
+                    "regel": item.get("bericht"),
+                    "regel_data": item,
                     "monitor_minutes": self.monitor_minutes,
                 },
             )
