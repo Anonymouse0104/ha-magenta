@@ -47,11 +47,17 @@ class MagentaCoordinator(DataUpdateCoordinator[dict]):
 
     @staticmethod
     def _kladblok_key(item: dict) -> str:
-        """Return a stable key for a kladblokregel."""
-        if item.get("id") is not None:
-            return f"id:{item['id']}"
-        return "fallback:" + repr(
-            (item.get("datum"), item.get("bericht"), item.get("user_id"), item.get("user_name"))
+        """Return a stable key for a kladblokregel across API refreshes."""
+        # Do not rely on the API's numeric ID. Use the actual content and
+        # author information so the same notebook line is only processed once.
+        return "content:" + repr(
+            (
+                item.get("datum"),
+                item.get("bericht"),
+                item.get("user_id"),
+                item.get("user_name"),
+                item.get("voertuig_name"),
+            )
         )
 
     def _start_monitoring(self, incident: dict, notebook: list[dict]) -> None:
