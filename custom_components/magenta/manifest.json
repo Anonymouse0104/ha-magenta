@@ -1,10 +1,13 @@
 {
   "domain": "magenta",
   "name": "Magenta Start",
-  "version": "0.2.2",
+  "codeowners": [
+    "@Anonymouse0104"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Anonymouse0104/ha-magenta",
-  "requirements": [],
-  "codeowners": [],
-  "iot_class": "cloud_polling"
+  "issue_tracker": "https://github.com/Anonymouse0104/ha-magenta/issues",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "version": "0.2.3"
 }

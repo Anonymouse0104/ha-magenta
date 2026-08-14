@@ -1,19 +1,24 @@
-from __future__ import annotations
-
-from datetime import timedelta
-
 DOMAIN = "magenta"
+NAME = "Magenta Start"
 
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
-CONF_MONITOR_MINUTES = "kladblok_monitor_minutes"
 
+API_BASE = "https://apps.magentammt.com/api"
+UPDATE_INTERVAL_SECONDS = 30
+
+CONF_MONITOR_MINUTES = "kladblok_monitor_minutes"
 DEFAULT_MONITOR_MINUTES = 10
 MIN_MONITOR_MINUTES = 1
 MAX_MONITOR_MINUTES = 120
 
-API_BASE = "https://apps.magentammt.com/api"
-
 PLATFORMS = ["sensor"]
 
-UPDATE_INTERVAL = timedelta(seconds=30)
+ATTR_INCIDENT_ID = "incident_id"
+ATTR_INCIDENT_NUMBER = "incident_number"
+ATTR_LOCATION = "location"
+ATTR_PRIORITY = "priority"
+ATTR_START_TIME = "start_time"
+ATTR_MODIFIED = "modified_on"
+ATTR_LINES = "regels"
+ATTR_UNITS = "eenheden"

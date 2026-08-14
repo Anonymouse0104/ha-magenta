@@ -1,244 +1,192 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
+import datetime as dt
 import logging
-from typing import Any
 
-import aiohttp
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .api import MagentaApi, MagentaApiError, MagentaAuthError, clean_html
 from .const import (
     API_BASE,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    DOMAIN,
+    UPDATE_INTERVAL_SECONDS,
     CONF_MONITOR_MINUTES,
     DEFAULT_MONITOR_MINUTES,
-    UPDATE_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class MagentaApiError(Exception):
-    """Magenta API error."""
+class MagentaCoordinator(DataUpdateCoordinator[dict]):
+    """Coordinate Magenta API polling."""
 
-
-class MagentaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Polls Magenta and exposes incident/kladblok data."""
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        username: str,
-        password: str,
-        monitor_minutes: int = DEFAULT_MONITOR_MINUTES,
-    ) -> None:
-        self.username = username
-        self.password = password
-        self.monitor_minutes = monitor_minutes
-        self.ticket: str | None = None
-        self._session: aiohttp.ClientSession | None = None
-
-        self.current_incident_id: int | None = None
-        self.current_incident_number: int | None = None
-        self.monitor_until: datetime | None = None
-        self._seen_kladblok: set[str] = set()
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.entry = entry
+        self.api = MagentaApi(hass, API_BASE)
+        self.username = entry.data[CONF_USERNAME]
+        self.password = entry.data[CONF_PASSWORD]
+        self.monitor_minutes = int(
+            entry.options.get(CONF_MONITOR_MINUTES, DEFAULT_MONITOR_MINUTES)
+        )
         self._initialized = False
-        self._seed_kladblok = False
+        self._monitored_incident_id: int | None = None
+        self._monitor_until: dt.datetime | None = None
+        self._seen_kladblok_ids: set[str] = set()
 
         super().__init__(
             hass,
             _LOGGER,
-            name="Magenta Start",
-            update_interval=UPDATE_INTERVAL,
+            name=DOMAIN,
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_SECONDS),
         )
-
-    async def async_login(self) -> None:
-        await self._ensure_session()
-        payload = {
-            "login": self.username,
-            "password": self.password,
-            "login_as": "",
-            "remember": False,
-        }
-        try:
-            async with self._session.post(
-                f"{API_BASE}/authenticate/login",
-                json=payload,
-                headers={
-                    "Accept": "application/vnd.magentammt.com+json; version=1.0;",
-                    "Content-Type": "application/json",
-                },
-                timeout=20,
-            ) as response:
-                data = await response.json(content_type=None)
-                if response.status in (401, 403):
-                    raise MagentaApiError("Ongeldige gebruikersnaam of wachtwoord")
-                if response.status >= 400:
-                    message = data.get("message") if isinstance(data, dict) else None
-                    raise MagentaApiError(str(message or f"Login failed: HTTP {response.status}"))
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise MagentaApiError(str(err)) from err
-
-        # Magenta returns a ticket either directly or nested in the result.
-        ticket = (
-            data.get("ticket")
-            or data.get("result", {}).get("ticket")
-            or data.get("data", {}).get("ticket")
-        )
-        if not ticket:
-            raise MagentaApiError("No ticket returned by Magenta")
-        self.ticket = ticket
-
-    async def _ensure_session(self) -> None:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-
-    async def _request(self, path: str, params: list[tuple[str, str]] | None = None):
-        await self._ensure_session()
-        if not self.ticket:
-            await self.async_login()
-
-        headers = {
-            "Accept": "application/vnd.magentammt.com+json; version=1.0;",
-            "Authorization": f"Ticket {self.ticket}",
-        }
-        try:
-            async with self._session.get(
-                f"{API_BASE}{path}", params=params, headers=headers
-            ) as response:
-                if response.status == 401:
-                    self.ticket = None
-                    await self.async_login()
-                    headers["Authorization"] = f"Ticket {self.ticket}"
-                    async with self._session.get(
-                        f"{API_BASE}{path}", params=params, headers=headers
-                    ) as retry:
-                        if retry.status >= 400:
-                            raise MagentaApiError(f"API error: {retry.status}")
-                        return await retry.json(content_type=None)
-                if response.status >= 400:
-                    raise MagentaApiError(f"API error: {response.status}")
-                return await response.json(content_type=None)
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise MagentaApiError(str(err)) from err
-
-    async def _fetch_latest(self) -> dict[str, Any]:
-        params = [
-            ("columns[]", "gebeurtenis_id"),
-            ("columns[]", "begin_op"),
-            ("columns[]", "nummer"),
-            ("columns[]", "street_full"),
-            ("columns[]", "huisnummer"),
-            ("columns[]", "zip_code"),
-            ("columns[]", "city_name"),
-            ("columns[]", "prioriteit"),
-            ("columns[]", "meldings_classificatie_1"),
-            ("columns[]", "verslag_status"),
-            ("columns[]", "opkomst_status"),
-            ("limit[offset]", "0"),
-            ("limit[row_count]", "1"),
-            ("sort[column]", "begin_op"),
-            ("sort[direction]", "DESC"),
-            ("filters[hide_empty_opkomst]", "1"),
-        ]
-        data = await self._request("/incidenten/incidenten", params)
-        records = data.get("result", {}).get("records", [])
-        return records[0] if records else {}
-
-    async def _fetch_detail(self, incident_id: int) -> dict[str, Any]:
-        params = [
-            ("columns[]", "ingezette_eenheden"),
-            ("columns[]", "kladblok"),
-            ("columns[]", "karakteristieken"),
-            ("columns[]", "modified_on"),
-        ]
-        data = await self._request(f"/incidenten/incident/{incident_id}", params)
-        return data.get("result", {}) or {}
 
     @staticmethod
-    def _line_key(line: dict[str, Any]) -> str:
-        for key in ("id", "kladblok_id", "regel_id", "created_on", "datumtijd", "timestamp"):
-            if line.get(key) is not None:
-                return f"{key}:{line[key]}"
-        return repr(sorted(line.items()))
+    def _kladblok_key(item: dict) -> str:
+        """Return a stable key for a kladblokregel."""
+        if item.get("id") is not None:
+            return f"id:{item['id']}"
+        return "fallback:" + repr(
+            (item.get("datum"), item.get("bericht"), item.get("user_id"), item.get("user_name"))
+        )
 
-    @callback
-    def _start_monitoring(self, incident: dict[str, Any]) -> None:
-        self.current_incident_id = incident.get("gebeurtenis_id")
-        self.current_incident_number = incident.get("nummer")
-        self.monitor_until = datetime.now().astimezone() + timedelta(
+    def _start_monitoring(self, incident: dict, notebook: list[dict]) -> None:
+        """Start a new monitoring window for a newly detected incident."""
+        incident_id = incident.get("gebeurtenis_id") or incident.get("id")
+        self._monitored_incident_id = int(incident_id) if incident_id is not None else None
+        self._monitor_until = dt.datetime.now(dt.timezone.utc) + timedelta(
             minutes=self.monitor_minutes
         )
-        self._seen_kladblok.clear()
-        self._seed_kladblok = True
+        self._seen_kladblok_ids = {
+            self._kladblok_key(item) for item in notebook if isinstance(item, dict)
+        }
+        self.hass.bus.async_fire(
+            "magenta_nieuw_incident",
+            {
+                "incident_id": self._monitored_incident_id,
+                "incident_nummer": incident.get("nummer"),
+                "monitor_minutes": self.monitor_minutes,
+            },
+        )
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    def _process_new_kladblok(self, incident: dict, notebook: list[dict]) -> None:
+        """Fire events for new lines during the active incident window."""
+        incident_id = incident.get("gebeurtenis_id") or incident.get("id")
+        if incident_id is None or self._monitored_incident_id != int(incident_id):
+            return
+        now = dt.datetime.now(dt.timezone.utc)
+        if not self._monitor_until or now > self._monitor_until:
+            return
+
+        for item in notebook:
+            if not isinstance(item, dict):
+                continue
+            key = self._kladblok_key(item)
+            if key in self._seen_kladblok_ids:
+                continue
+            self._seen_kladblok_ids.add(key)
+            self.hass.bus.async_fire(
+                "magenta_kladblok_regel",
+                {
+                    "incident_id": int(incident_id),
+                    "incident_nummer": incident.get("nummer"),
+                    "regel_id": item.get("id"),
+                    "datum": item.get("datum"),
+                    "bericht": item.get("bericht"),
+                    "regel": item,
+                    "monitor_minutes": self.monitor_minutes,
+                },
+            )
+
+    async def _async_update_data(self) -> dict:
         try:
-            latest = await self._fetch_latest()
-            incident_id = latest.get("gebeurtenis_id")
+            if not self.api._ticket:
+                await self.api.login(self.username, self.password)
 
-            if incident_id and incident_id != self.current_incident_id:
-                self._start_monitoring(latest)
+            result = await self.api.get_incident_data()
+            if result is None:
+                return {"available": True, "incident": None}
 
-            detail = {}
-            new_lines: list[dict[str, Any]] = []
-
-            if self.current_incident_id:
-                detail = await self._fetch_detail(self.current_incident_id)
-                lines = detail.get("kladblok") or []
-
-                # Seed the lines that already existed when monitoring started.
-                # Only lines that appear after that point are considered new.
-                if self._seed_kladblok or not self._initialized:
-                    self._seen_kladblok = {
-                        self._line_key(line) for line in lines if isinstance(line, dict)
+            notebook = []
+            for item in result.get("kladblok") or []:
+                notebook.append(
+                    {
+                        "id": item.get("id"),
+                        "datum": item.get("datum"),
+                        "bericht": clean_html(item.get("bericht")),
+                        "voertuig_name": item.get("voertuig_name"),
+                        "user_id": item.get("user_id"),
+                        "user_name": item.get("user_name"),
                     }
-                    self._seed_kladblok = False
+                )
+
+            units = []
+            for unit in result.get("ingezette_eenheden") or []:
+                units.append(
+                    {
+                        "id": unit.get("id"),
+                        "eenheid": unit.get("eenheid_naam"),
+                        "kazerne": unit.get("kazerne_naam"),
+                        "soort": unit.get("soort"),
+                        "alarm": unit.get("alarm"),
+                        "uitgerukt": unit.get("uitgerukt"),
+                        "ter_plaatse": unit.get("ter_plaatse"),
+                        "ingerukt": unit.get("ingerukt"),
+                        "beschikbaar": unit.get("beschikbaar"),
+                        "terug": unit.get("terug"),
+                    }
+                )
+
+            incident = {
+                "id": result.get("gebeurtenis_id"),
+                "gebeurtenis_id": result.get("gebeurtenis_id"),
+                "nummer": result.get("nummer"),
+                "begin_op": result.get("begin_op"),
+                "begin_brw": result.get("begin_brw"),
+                "einde_op": result.get("einde_op"),
+                "modified_on": result.get("modified_on"),
+                "prioriteit": result.get("prioriteit"),
+                "classificatie": result.get("meldings_classificatie_1"),
+                "straat": result.get("street_full"),
+                "huisnummer": result.get("huisnummer"),
+                "postcode": result.get("zip_code"),
+                "plaats": result.get("city_name"),
+                "notebook": notebook,
+                "units": units,
+            }
+
+            incident_id = incident.get("gebeurtenis_id")
+            if incident_id is not None:
+                if not self._initialized:
+                    # Initial sync: do not treat the current historical incident as new.
+                    self._monitored_incident_id = int(incident_id)
+                    self._seen_kladblok_ids = {
+                        self._kladblok_key(item) for item in notebook if isinstance(item, dict)
+                    }
                     self._initialized = True
-                elif self.monitor_until and datetime.now().astimezone() <= self.monitor_until:
-                    for line in lines:
-                        if not isinstance(line, dict):
-                            continue
-                        key = self._line_key(line)
-                        if key not in self._seen_kladblok:
-                            self._seen_kladblok.add(key)
-                            new_lines.append(line)
-                            self.hass.bus.async_fire(
-                                "magenta_kladblok_regel",
-                                {
-                                    "incident_id": self.current_incident_id,
-                                    "incident_nummer": self.current_incident_number,
-                                    "regel": line,
-                                    "monitor_minutes": self.monitor_minutes,
-                                },
-                            )
+                elif self._monitored_incident_id != int(incident_id):
+                    self._start_monitoring(incident, notebook)
                 else:
-                    # Monitoring window has ended; keep the incident selected,
-                    # but don't emit new kladblok events.
-                    pass
+                    self._process_new_kladblok(incident, notebook)
 
             return {
-                "latest": latest,
-                "detail": detail,
-                "new_kladblok": new_lines,
-                "monitor_until": self.monitor_until,
+                "available": True,
                 "monitoring": bool(
-                    self.monitor_until
-                    and datetime.now().astimezone() <= self.monitor_until
+                    self._monitor_until
+                    and dt.datetime.now(dt.timezone.utc) <= self._monitor_until
+                    and self._monitored_incident_id == incident_id
                 ),
+                "monitor_until": self._monitor_until.isoformat() if self._monitor_until else None,
+                "incident": incident,
             }
+        except MagentaAuthError as err:
+            raise UpdateFailed(f"Authentication failed: {err}") from err
         except MagentaApiError as err:
             raise UpdateFailed(str(err)) from err
-
-    async def async_close(self) -> None:
-        if self._session and not self._session.closed:
-            await self._session.close()
-
-    @property
-    def monitor_minutes(self) -> int:
-        return self._monitor_minutes
-
-    @monitor_minutes.setter
-    def monitor_minutes(self, value: int) -> None:
-        self._monitor_minutes = int(value)
+        except Exception as err:
+            _LOGGER.exception("Unexpected Magenta error")
+            raise UpdateFailed(str(err)) from err

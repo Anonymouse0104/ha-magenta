@@ -84,13 +84,19 @@ The integration stores the username/password in the Home Assistant config entry.
 MFA is intentionally not included in v0.1.0 because the exact MFA submission flow was not established during API reverse engineering. A future release should add it rather than guessing at the protocol.
 
 
-## v0.2.0
+## v0.2.3
 
-This release exposes Magenta incident identity and the main incident timing
-fields to Home Assistant. The integration remains notification-agnostic:
-WhatsApp, Telegram, mobile notifications, or other services should be
-implemented with Home Assistant automations.
+This release adds the three main Magenta incident timestamps as Home Assistant timestamp sensors:
 
-The Magenta `gebeurtenis_id` and incident number are exposed so automations
-can ensure that kladblok messages belong to the same incident before acting
-on them.
+- Aanname (`begin_op`)
+- Overdracht uitgifte (`begin_brw`)
+- Afsluiten incident (`einde_op`)
+
+Incident number (`nummer`) and the stable Magenta `gebeurtenis_id` are exposed as attributes. This allows Home Assistant automations to verify that kladblokregels belong to the same incident before acting on them.
+
+The integration deliberately contains no WhatsApp, Telegram, or other notification-specific logic. Notification delivery belongs in Home Assistant automations so every user can choose their own notification service.
+
+
+## Kladblok monitoring
+
+Configureer via de integratie-opties hoeveel minuten nieuwe kladblokregels na een nieuw incident worden gemonitord. De integratie vuurt `magenta_kladblok_regel` events af; notificaties blijven bewust buiten de integratie.

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Magenta Start",
-        "description": "Log in op Magenta Start / Inzetregistratie.",
+        "description": "Vul je Magenta Start gebruikersnaam en wachtwoord in.",
         "data": {
           "username": "Gebruikersnaam",
           "password": "Wachtwoord",
@@ -12,18 +12,19 @@
       }
     },
     "error": {
-      "cannot_connect": "Kan geen verbinding maken met Magenta of inloggen.",
-      "unknown": "Onbekende fout."
+      "cannot_connect": "Kan geen verbinding maken met Magenta Start.",
+      "invalid_auth": "Gebruikersnaam of wachtwoord is ongeldig.",
+      "mfa_required": "Dit account vereist MFA. MFA wordt in deze versie nog niet ondersteund."
     },
     "abort": {
-      "already_configured": "Deze gebruiker is al geconfigureerd."
+      "already_configured": "Dit Magenta-account is al toegevoegd."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Magenta Start instellingen",
-        "description": "Stel in hoe lang nieuwe kladblokregels na een nieuw incident gevolgd worden.",
+        "title": "Magenta Start opties",
+        "description": "Stel in hoelang nieuwe kladblokregels na een nieuw incident worden gemonitord.",
         "data": {
           "kladblok_monitor_minutes": "Kladblokmonitor (minuten)"
         }
